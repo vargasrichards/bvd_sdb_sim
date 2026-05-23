@@ -15,25 +15,12 @@
 #...............................................................................
 
   #...................................       
-  ## Demographic and social mixing parameters
-    # Read health zone population data and compute mean in affected provinces
-    pop <- as.data.frame(read_xlsx(paste0(dir_path, 
-      "in/drc-hpc-projection-population-2024.xlsx")))  
-    x <- pop[which(pop$Province %in% c("Ituri", "Nord-Kivu", "Sud-Kivu")),
-      "Population 2024"]
-    pop_hz_mean <- round(mean(x), digits = 0)
-    pop_hz_sd <- sd(x)
-  
-    
-  #...................................       
-  ## Transmission dynamic parameters
-    
-    # Basic reproduction number
-    r0 <- seq(1.0, 2.0, 0.2)
-    
-    # Infectious period
-    infectious_period <- 10 + 1 # symptom onset to death/recovery + 2 days of 
-      # infectiousness after death (if CFR ~ 50%, add 1 day on average)
+  ## Read in simulation parameters
+
+    # Read parameter file and create parameter vector
+    pars_df <- read_xlsx(paste0(dir_path, "in/evd_sdb_sim_parameters.xlsx"))
+    pars <- pars_df$value
+    names(pars) <- pars_df$parameter
     
     # Effect of safe and dignified burial (SDB) on reproduction number, based on
       # two methods (Hirano-Imbens [hi], Propensity Weights [pw]) 
@@ -48,11 +35,31 @@
     for (i in 2:nrow(effect_sdb)) {effect_sdb[i, x] <- 
       effect_sdb[i, x] - effect_sdb[1, x]}
     effect_sdb[1, x] <- c(0, 0, 0)
+    colnames(effect_sdb) <- c("eff", "mean", "low", "high")
+    
+  #...................................       
+  ## Set up scenarios
     
     # Safe and dignified burial (SDB) intervention scenarios    
-    scenarios <- expand.grid(coverage = seq(0, 1, 0.1), 
-      prop_success = unique(effect_sdb$prop_success))
-    scenarios <- merge(scenarios, effect_sdb, by = "prop_success", all.x = T)    
+    scenarios <- expand.grid(
+      R0_I = seq(0.50, 1.50, 0.20),
+      R0_D = seq(0.40, 0.80, 0.20),
+      cov = seq(0, 1, 0.2), 
+      eff = unique(effect_sdb$eff)
+    )
+    scenarios <- merge(scenarios, effect_sdb, by = "eff", all.x = T)    
+    scenarios$id <- 1:nrow(scenarios)
+    
+    # Select and name scenarios to highlight
+    scenarios$highlight <- F
+    scenarios[which(
+      scenarios$R0_I %in% c(0.70, 1.30) & 
+      scenarios$R0_D %in% c(0.40, 0.60) &
+      scenarios$cov %in% c(0, 0.4, 0.8) & 
+      scenarios$eff %in% c(0, 0.4, 0.8)), 
+      "highlight"] <- T
+    table(scenarios$highlight)
+    scenarios_highlight <- subset(scenarios, highlight == T)
     
     
 #...............................................................................                           
@@ -60,12 +67,12 @@
 #...............................................................................
 
   #...................................       
-  ## Set up model (no age structure)
+  ## Set up stochastic model
     
     # SEIRD time step
     seird_step <- Csnippet("
       double dN_SE = rbinom(S, 1 - exp(-(R0_I/infectious_period) * I/N)) + 
-        rbinom(S, 1 - exp(-((R0_D/burial_period) - ((1 - cov) * eff)) * D/N));
+        rbinom(S, 1 - exp(-(((R0_D - ((1 - cov) * eff))/burial_period)) * D/N));
       double dN_EI = rbinom(E, 1 - exp(-(1/incubation_period)));
       double dN_IF = rbinom(I, 1 - exp(-(1/infectious_period)));
       double dN_FD = rbinom(dN_IF, cfr);
@@ -77,7 +84,7 @@
       I += dN_EI - dN_IF;
       D += dN_FD - dN_DR;
       R += dN_FR + dN_DR;
-      Icum += dN_EI;
+      new_cases += dN_EI;
     ")
 
     # Specify initial conditions    
@@ -88,43 +95,78 @@
       I = n_seeds - E;
       R = 0;
       D = 0;
-      Icum = 0;
+      new_cases = 0;
     ")
 
     # Specify timeline
-    out <- data.frame(day = 1:60)
+    timeline <- data.frame(day = 1:pars["n_days"])
     
     # Fold everything into pomp object
-    evd_seird <- pomp(data = out, times = "day", rprocess = euler(seird_step,delta.t = 1), 
-      rinit = seird_init, t0 = 1,
+    evd_seird <- pomp(
+      data = timeline, 
+      times = "day", 
+      rprocess = euler(seird_step, delta.t = 1), 
+      rinit = seird_init,
+      t0 = 1,
       paramnames = c("N", "R0_I", "R0_D", "incubation_period", 
         "infectious_period", "burial_period", "cfr", "cov", "eff", "n_seeds"),
-      statenames = c("S", "E", "I", "R", "D", "Icum"),
-      accumvars = "Icum")
+      statenames = c("S", "E", "I", "R", "D", "new_cases"),
+      accumvars = "new_cases"
+    )
 
     
   #...................................       
-  ## Run simulations
+  ## Run highlight simulations only
     
-    # Run simulations
-    sim1 <- simulate(evd_seird, 
-      params = c(N = pop_hz_mean, R0_I = 1.5, R0_D = 0.5, 
-        incubation_period = 3, infectious_period = 10, burial_period = 1,
-        cfr = 0.5, cov = 1, eff = 0.3, n_seeds = 10),
-      nsim = 5,
-      format = "data.frame",
-      include.data = F
-    )
+    # Initialise output dataframe
+    n_sim <- 1:pars["n_sim"]
+    out <- merge(scenarios_highlight, n_sim)
+    colnames(out)[colnames(out) == "y"] <- "n_sim"  
+    out <- merge(out, timeline)
+    out <- out[order(out$id, out$n_sim, out$day), ]
+    out$new_cases <- NA
+    
+    # Run highlight simulations
+    for (i in 1:nrow(scenarios_highlight)) {
+      # run simulation
+      sim_i <- suppressWarnings(simulate(evd_seird, 
+        params = c(
+          N = as.integer(pars["pop"]), 
+          R0_I = scenarios_highlight[i, "R0_I"], 
+          R0_D = scenarios_highlight[i, "R0_D"], 
+          incubation_period = as.numeric(pars["incubation_period"]), 
+          infectious_period = as.numeric(pars["infectious_period"]),
+          burial_period = as.numeric(pars["burial_period"]),
+          cfr = as.numeric( pars["cfr"]),
+          cov = scenarios_highlight[i, "cov"], 
+          eff = scenarios_highlight[i, "eff"], 
+          n_seeds = as.integer(pars["n_seeds"])),
+        nsim = as.integer(pars["n_sim"]),
+        format = "data.frame",
+        include.data = F
+      ))
+      
+      # collect results
+      colnames(sim_i)[colnames(sim_i) == ".id"] <- "n_sim"
+      sim_i <- sim_i[order(sim_i$n_sim, sim_i$day), ]
+      out[which(out$id == scenarios_highlight[i, "id"]), 
+        c("n_sim", "day", "new_cases")] <- sim_i[,c("n_sim","day", "new_cases")]
+    }    
+
     
     # Visualise results
-    ggplot(sim1, aes(x = day, y = Icum, group = .id)) +
-      geom_line()
+    ggplot(out, aes(x = day, y = new_cases, group = n_sim, colour = eff)) +
+      geom_line() +
+      scale_y_continuous("new cases per day") +
+      scale_x_continuous("time (days") +
+      scale_colour_viridis("SDB effectiveness (%)") +
+      facet_grid(cov ~ )
     
     
     
 
     
-
+cum_cases <- aggregate(new_cases ~ n_sim, data = sim_i, FUN = sum)
 
 #.........................................................................................
 ### ENDS
