@@ -17,31 +17,20 @@
   #...................................      
   ## Install or load required R packages
 
-    # pacman and epidemics
+    # NOTE: need to install RTools for current version of R
+      # needed to compile C++ code
+
+    # pacman if not already installed
     if (!"pacman" %in% rownames(installed.packages())) {
       install.packages("pacman")}
-    # if (!"epidemics" %in% rownames(installed.packages())) {
-    #   install.packages('epidemics', 
-    #     repos = c('https://epiverse-trace.r-universe.dev',
-    #       'https://cloud.r-project.org'))}
-    # if (!"epiparameterDB" %in% rownames(installed.packages())) {
-    #   install.packages('epiparameterDB', 
-    #     repos = c('https://epiverse-trace.r-universe.dev', 
-    #       'https://cloud.r-project.org'))}
-    # if (!"epiparameter" %in% rownames(installed.packages())) {
-    #   install.packages('epiparameter', 
-    #     repos = c('https://epiverse-trace.r-universe.dev', 
-    #       'https://cloud.r-project.org'))}
-    
-    
-  # Install or load packages from CRAN
+
+    # Install or load packages from CRAN
     pacman::p_load(
       ggplot2,       # Visualise data
       ggpubr,        # Arrange multiple plots into a single plot
       pomp,          # Implement SEIR model in C++ 
       readxl,        # Read Excel files
       scales,        # Scale and format data for visualisation
-      #socialmixr,   # Social mixing matrices
       tidyverse,     # Tidyverse suite of packages
       viridis)       # Colour-blind palette
 
@@ -81,7 +70,7 @@
 ### Running scenario simulations
 #...............................................................................
     
-source(paste0(dir_code, "/01_model_scenarios.R"))    
+source(paste0(dir_path, "code/01_model_scenarios.R"))    
     
     
 #...............................................................................
