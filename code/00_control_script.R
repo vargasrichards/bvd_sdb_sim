@@ -69,9 +69,22 @@
 #...............................................................................
 ### Running scenario simulations
 #...............................................................................
+
+  #...................................      
+  ## Set up model and define scenarios
+  source(paste0(dir_path, "code/01_prepare_model.R"))    
+
+        
+  #...................................      
+  ## Main analysis
+  source(paste0(dir_path, "code/02_main_analysis.R"))    
+
+        
+  #...................................      
+  ## Sensitivity analyses
+  source(paste0(dir_path, "code/03_sens_analyses.R"))    
     
-source(paste0(dir_path, "code/01_model_scenarios.R"))    
-    
+      
     
 #...............................................................................
 ### ENDS
