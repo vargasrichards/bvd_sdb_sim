@@ -36,27 +36,35 @@
       effect_sdb[i, x] - effect_sdb[1, x]}
     effect_sdb[1, x] <- c(0, 0, 0)
     colnames(effect_sdb) <- c("eff", "mean", "low", "high")
+    effect_sdb <- abs(effect_sdb)
     
   #...................................       
   ## Set up scenarios
     
     # Safe and dignified burial (SDB) intervention scenarios    
     scenarios <- expand.grid(
-      R0_I = seq(0.50, 1.50, 0.20),
-      R0_D = seq(0.40, 0.80, 0.20),
+      R0_I = seq(0.50, 1.50, 0.10),
+      R0_D = seq(0.40, 0.80, 0.10),
       cov = seq(0, 1, 0.2), 
       eff = unique(effect_sdb$eff)
     )
     scenarios <- merge(scenarios, effect_sdb, by = "eff", all.x = T)    
     scenarios$id <- 1:nrow(scenarios)
+    scenarios$R0 <- paste0("R0 = ", scenarios$R0_I + scenarios$R0_D, " (", 
+      scenarios$R0_D, " due to burial)")
     
     # Select and name scenarios to highlight
     scenarios$highlight <- F
     scenarios[which(
-      scenarios$R0_I %in% c(0.70, 1.30) & 
-      scenarios$R0_D %in% c(0.40, 0.60) &
-      scenarios$cov %in% c(0, 0.4, 0.8) & 
-      scenarios$eff %in% c(0, 0.4, 0.8)), 
+      scenarios$R0 %in% c(
+        "R0 = 1.1 (0.4 due to burial)", 
+        "R0 = 1.3 (0.6 due to burial)", 
+        "R0 = 1.5 (0.4 due to burial)", 
+        "R0 = 1.7 (0.6 due to burial)", 
+        "R0 = 1.9 (0.8 due to burial)" 
+      ) &
+      scenarios$cov %in% c(0, 0.2, 0.4, 0.6, 0.8, 1.0) & 
+      scenarios$eff %in% c(0.6, 0.8, 1.0)), 
       "highlight"] <- T
     table(scenarios$highlight)
     scenarios_highlight <- subset(scenarios, highlight == T)
@@ -72,7 +80,7 @@
     # SEIRD time step
     seird_step <- Csnippet("
       double dN_SE = rbinom(S, 1 - exp(-(R0_I/infectious_period) * I/N)) + 
-        rbinom(S, 1 - exp(-(((R0_D - ((1 - cov) * eff))/burial_period)) * D/N));
+        rbinom(S, 1 - exp(-((R0_D - (cov * eff))/burial_period) * D/N));
       double dN_EI = rbinom(E, 1 - exp(-(1/incubation_period)));
       double dN_IF = rbinom(I, 1 - exp(-(1/infectious_period)));
       double dN_FD = rbinom(dN_IF, cfr);
@@ -110,13 +118,17 @@
       t0 = 1,
       paramnames = c("N", "R0_I", "R0_D", "incubation_period", 
         "infectious_period", "burial_period", "cfr", "cov", "eff", "n_seeds"),
-      statenames = c("S", "E", "I", "R", "D", "new_cases"),
-      accumvars = "new_cases"
+      statenames = c("S", "E", "I", "R", "D", "new_cases")
+      # accumvars = "new_cases"
     )
 
-    
+
+#...............................................................................                           
+### Running highlight simulations
+#...............................................................................
+        
   #...................................       
-  ## Run highlight simulations only
+  ## Run simulations
     
     # Initialise output dataframe
     n_sim <- 1:pars["n_sim"]
@@ -139,7 +151,8 @@
           burial_period = as.numeric(pars["burial_period"]),
           cfr = as.numeric( pars["cfr"]),
           cov = scenarios_highlight[i, "cov"], 
-          eff = scenarios_highlight[i, "eff"], 
+          eff = effect_sdb[which(
+            effect_sdb$eff == scenarios_highlight[i, "eff"]), "mean"],
           n_seeds = as.integer(pars["n_seeds"])),
         nsim = as.integer(pars["n_sim"]),
         format = "data.frame",
@@ -153,20 +166,62 @@
         c("n_sim", "day", "new_cases")] <- sim_i[,c("n_sim","day", "new_cases")]
     }    
 
+
+  #...................................       
+  ## Visualise final epidemic size
+        
+    # Compute average results 
+    out$eff <- factor(percent(out$eff), levels = c("60%", "80%", "100%"))
+    out$R0 <- paste0("R0 = ", out$R0_I + out$R0_D, " (", out$R0_D , 
+      " due to burial)")
+    out$cov <- factor(paste0("coverage = ", percent(out$cov)),
+      levels =paste0("coverage = ",c("0%", "20%", "40%", "60%", "80%", "100%")))
+    df <- aggregate(new_cases ~ day + R0 + eff + cov, data = out,
+      FUN = function(xx) {c(mean(xx), quantile(xx, c(0.5, 0.1, 0.9)))})
+    df <- data.frame(df[, c("day", "R0", "eff", "cov")], unlist(df$new_cases))
+    colnames(df) <- c("day", "R0", "eff", "cov", 
+      "mean", "median", "quant10", "quant90")
+    df <- subset(df, day == max(df$day))
     
-    # Visualise results
-    ggplot(out, aes(x = day, y = new_cases, group = n_sim, colour = eff)) +
-      geom_line() +
-      scale_y_continuous("new cases per day") +
-      scale_x_continuous("time (days") +
-      scale_colour_viridis("SDB effectiveness (%)") +
-      facet_grid(cov ~ )
+    # Visualise
+    plot <- ggplot(df, aes(x = eff, y = median, colour = eff, fill = eff)) +
+      geom_point(alpha = 0.75, size = 4, shape = 22) +
+      geom_errorbar(stat = "identity", aes(ymin = quant10, ymax = quant90),
+        width = 0.2) +
+      scale_y_continuous("cumulative number of new cases") +
+      scale_x_discrete("SDB effectiveness (%)") +
+      scale_colour_viridis_d("SDB effectiveness (%)") +
+      scale_fill_viridis_d("SDB effectiveness (%)") +
+      facet_grid(cov ~ R0) +
+      theme_pubclean()+
+      theme(legend.position = "none")
+    ggsave(paste0(dir_path, "out/scen_highlight_final_size.png"),
+      units = "cm", dpi = "print", height = 20, width = 20 * hw)
+
+  #...................................       
+  ## Compute and visualise extinction probability
+      # extinction = zero new cases during last 14d (edge EVD incubation period)
+        
+    # Compute extinction probability
+    df <- subset(out, day %in% c(max(out$day), max(out$day) - 14))
+    df <- aggregate(new_cases ~ n_sim + R0 + eff + cov, data = df, FUN = diff)
+    df$extinct <- ifelse(df$new_cases == 0, T, F)
+    df <- aggregate(extinct ~ R0 + eff + cov, data = df, FUN = mean)
     
-    
-    
+    # Visualise
+    plot <- ggplot(df, aes(x = eff, y = extinct, colour = eff, fill = eff)) +
+      geom_bar(stat = "identity", alpha = 0.75) +
+      scale_y_continuous("probability of outbreak extinction", labels = percent) +
+      scale_x_discrete("SDB effectiveness (%)") +
+      scale_colour_viridis_d("SDB effectiveness (%)") +
+      scale_fill_viridis_d("SDB effectiveness (%)") +
+      facet_grid(cov ~ R0) +
+      theme_bw()+
+      theme(legend.position = "none", panel.grid.major.x = element_blank())
+    ggsave(paste0(dir_path, "out/scen_highlight_p_extinction.png"),
+      units = "cm", dpi = "print", height = 20, width = 20 * hw)
 
     
-cum_cases <- aggregate(new_cases ~ n_sim, data = sim_i, FUN = sum)
 
 #.........................................................................................
 ### ENDS
