@@ -42,7 +42,9 @@
     n_sim <- 1:pars["n_sim"]
     out <- merge(scenarios_highlight, n_sim)
     colnames(out)[colnames(out) == "y"] <- "n_sim"  
-    out <- merge(out, timeline)
+    days = c(max(timeline$day - 21), max(timeline$day))
+    out <- merge(out, days)
+    colnames(out)[ncol(out)] <- "day"
     out <- out[order(out$id, out$n_sim, out$day), ]
     out$cases <- NA
     
@@ -69,6 +71,7 @@
       ))
       
       # collect results
+      sim_i <- subset(sim_i, day %in% days)
       colnames(sim_i)[colnames(sim_i) == ".id"] <- "n_sim"
       sim_i <- sim_i[order(sim_i$n_sim, sim_i$day), ]
       out[which(out$id == scenarios_highlight[i, "id"]), 
