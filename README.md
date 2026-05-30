@@ -1,5 +1,5 @@
 ## Simulation of Safe and Dignified Burial for control of Bundibugyo Ebola virus epidemics
-### Description of input dataset and R analysis scripts
+### Description of input datasets and R analysis scripts
 May 2026
 
 ## General description
