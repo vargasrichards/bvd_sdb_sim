@@ -15,6 +15,6 @@ All the code is found in the `\code` folder. To replicate the analysis, follow t
 
 ## Description of R scripts
 * `00_control_script.R` loads necessary packages, sets a few general parameters and calls other scripts.
-* `01_prepare_model.R`loads model parameters, sets scenario values and initialises a stochastic transmission dynamic model using the excellent `pomp` package (https://kingaa.github.io/pomp/).
+* `01_prepare_model.R`loads model parameters, sets scenario values and initialises a stochastic transmission dynamic model using the excellent **pomp** package (https://kingaa.github.io/pomp/).
 * `02_main_analysis.R` carries out the main analysis. This includes running the main scenarios to be highlighted and visualising/saving some results.
 * `03_sens_analyses.R` carries out two sensitivity analyses: (i) effect of varying the number of starting (seed) cases; and (ii) two extreme scenarios (SDB vs. no SDB). 
