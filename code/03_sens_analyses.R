@@ -283,6 +283,11 @@
     df$cov_fr <- gsub("coverage", "couverture", df$cov)
     df$cov_fr <- factor(df$cov_fr,
       levels = paste0("couverture = ", c("0%", "100%")))    
+    out$Rn_fr <- out$Rn
+    out$Rn_fr <- gsub("\\.", ",", out$Rn_fr)
+    out$cov_fr <- gsub("coverage", "couverture", out$cov)
+    out$cov_fr <- factor(out$cov_fr,
+      levels = paste0("couverture = ", c("0%", "100%")))    
     write.csv(df, paste0(dir_path, "out/sens_extreme_cum_cases.csv"),
       row.names = F)
     
@@ -304,7 +309,7 @@
       units = "cm", dpi = "print", height = 15, width = 20 * hw)
 
     # Visualise in French
-    plot <- ggplot(df, aes(x = day, y = median, colour = Rn, fill = Rn)) +
+    plot <- ggplot(df, aes(x = day, y = median, colour = Rn, fill = Rn_fr)) +
       geom_line(data = out, aes(x = day, y = cases, group = n_sim), 
         alpha = 0.05, linewidth = 0.25, colour = "grey20") +
       geom_line(alpha = 0.75, linewidth = 2) +
