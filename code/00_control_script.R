@@ -64,7 +64,7 @@ set.seed(123)
 
 # Colour-blind palette for graphing
 palette_gen <- viridis(16)
-show_col(palette_gen)
+if (interactive()) show_col(palette_gen)
 
 # Height to width ratio for figures
 hw <- 1.3
